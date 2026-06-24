@@ -1,0 +1,37 @@
+# Build
+**/bin/
+**/obj/
+**/publish/
+**/out/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+*.tmp
+*.swp
+
+# Local secrets (never commit)
+**/.env
+**/appsettings.*.local.json
+**/secrets.json
+
+# Agent runtime state (production paths — local dev copies)
+**/setup-state.json
+**/setup-config.json
+**/sftp-state.json
+**/appsettings.Storage.json
+
+# Test artifacts
+**/TestResults/
+*.dmp

@@ -1,0 +1,4 @@
+namespace ExcPanel.TransferAgent.Providers.Linux;
+
+// Placeholder for future Linux-specific provider implementations
+// (user management, chmod, Samba, SFTP configuration, etc.)
