@@ -25,6 +25,7 @@ public class SafeProcessRunner : ISafeProcessRunner
         var startInfo = new ProcessStartInfo
         {
             FileName = fileName,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -41,6 +42,7 @@ public class SafeProcessRunner : ISafeProcessRunner
         try
         {
             process.Start();
+            process.StandardInput.Close();
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {

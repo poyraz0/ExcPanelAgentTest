@@ -44,7 +44,7 @@ public class DomainService : IDomainService
         var smbdRunning = await _probeService.IsServiceActiveAsync("smbd", cancellationToken);
         var winbindRunning = await _probeService.IsServiceActiveAsync("winbind", cancellationToken);
         var dnsOk = await CheckDnsAsync(cancellationToken);
-        var dcReachable = await CheckDcPingAsync(cancellationToken);
+        var dcReachable = await CheckDcReachabilityAsync(cancellationToken);
 
         return new DomainStatusResponse
         {
@@ -113,13 +113,16 @@ public class DomainService : IDomainService
             Remediation = dnsResolved ? null : "Verify DNS configuration."
         });
 
-        var dcPing = await PingHostAsync(request.DomainControllerIp, cancellationToken);
+        var dcPing = await DcReachabilityChecker.IsReachableAsync(
+            request.DomainControllerIp,
+            _processRunner,
+            cancellationToken);
         checks.Add(new DomainPrecheckItem
         {
             Name = "dc-reachability",
             Passed = dcPing,
-            Message = dcPing ? null : $"Domain controller IP '{request.DomainControllerIp}' is not reachable.",
-            Remediation = dcPing ? null : "Verify network connectivity to the domain controller."
+            Message = dcPing ? null : $"Domain controller '{request.DomainControllerIp}' is not reachable (ICMP or LDAP/Kerberos/SMB ports).",
+            Remediation = dcPing ? null : "Verify network connectivity to the domain controller on ports 88, 389, or 445."
         });
 
         var krbInstalled = await _probeService.IsPackageInstalledAsync("krb5-user", cancellationToken);
@@ -204,7 +207,7 @@ public class DomainService : IDomainService
     public async Task<DomainTestResponse> TestAsync(CancellationToken cancellationToken = default)
     {
         var testJoin = await _privilegedCommandExecutor.TestDomainJoinAsync(cancellationToken);
-        var dcPing = await CheckDcPingAsync(cancellationToken);
+        var dcPing = await CheckDcReachabilityAsync(cancellationToken);
         var groupResolved = await _probeService.IsAdGroupResolvedAsync(_sambaOptions.RequiredAdGroup, cancellationToken);
 
         return new DomainTestResponse
@@ -230,10 +233,16 @@ public class DomainService : IDomainService
         }
     }
 
-    private async Task<bool> CheckDcPingAsync(CancellationToken cancellationToken)
+    private async Task<bool> CheckDcReachabilityAsync(CancellationToken cancellationToken)
     {
-        var result = await _processRunner.RunAsync("wbinfo", ["--ping-dc"], cancellationToken: cancellationToken);
-        return result.ExitCode == 0;
+        var wbinfo = await _processRunner.RunAsync("wbinfo", ["--ping-dc"], cancellationToken: cancellationToken);
+        if (wbinfo.ExitCode == 0)
+        {
+            return true;
+        }
+
+        // Before domain join wbinfo fails; callers with explicit DC IP use Precheck instead.
+        return false;
     }
 
     private async Task<bool> ResolveHostAsync(string host, CancellationToken cancellationToken)
@@ -247,16 +256,5 @@ public class DomainService : IDomainService
         {
             return false;
         }
-    }
-
-    private async Task<bool> PingHostAsync(string ip, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(ip))
-        {
-            return false;
-        }
-
-        var result = await _processRunner.RunAsync("ping", ["-c", "1", "-W", "2", ip], cancellationToken: cancellationToken);
-        return result.ExitCode == 0;
     }
 }

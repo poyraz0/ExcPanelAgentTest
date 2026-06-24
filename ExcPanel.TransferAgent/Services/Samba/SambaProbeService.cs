@@ -124,6 +124,7 @@ public class SambaProbeService
         var result = await _processRunner.RunAsync(
             "testparm",
             ["-s"],
+            timeoutSeconds: 15,
             cancellationToken: cancellationToken);
 
         if (result.ExitCode != 0)

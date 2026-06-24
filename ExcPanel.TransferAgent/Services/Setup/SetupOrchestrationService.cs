@@ -131,9 +131,8 @@ public class SetupOrchestrationService : ISetupOrchestrationService
         AddPlanStep(response, SetupStepNames.DomainPrecheck, "Verify DNS and domain controller", needsDomain, !needsDomain, domainJoined ? "Already joined to domain." : null);
         AddPlanStep(response, SetupStepNames.DomainJoin, "Join Active Directory domain", needsDomain, !needsDomain, domainJoined ? "Already joined to domain." : null);
 
-        var sambaStatus2 = await _sambaProvider.GetStatusAsync(cancellationToken);
-        var needsSamba = request.Samba is not null && _setupOptions.RequireSambaForExchangeExport && !sambaStatus2.ShareConfigured;
-        AddPlanStep(response, SetupStepNames.SambaInitialize, "Initialize Samba share", needsSamba, !needsSamba, sambaStatus2.ShareConfigured ? "Samba share already configured." : null);
+        var needsSamba = request.Samba is not null && _setupOptions.RequireSambaForExchangeExport && !sambaStatusForPlan.ShareConfigured;
+        AddPlanStep(response, SetupStepNames.SambaInitialize, "Initialize Samba share", needsSamba, !needsSamba, sambaStatusForPlan.ShareConfigured ? "Samba share already configured." : null);
 
         var sftpStatus = await _sftpService.GetStatusAsync(cancellationToken);
         var needsSftp = request.Sftp?.Enabled == true && _setupOptions.RequireSftpForUserDownload &&
@@ -263,7 +262,14 @@ public class SetupOrchestrationService : ISetupOrchestrationService
 
                     if (!precheck.Ready && !precheck.AlreadyJoined)
                     {
-                        throw new InvalidOperationException("Domain precheck failed.");
+                        var failedChecks = precheck.Checks
+                            .Where(c => !c.Passed)
+                            .Select(c => $"{c.Name}: {c.Message ?? "failed"}")
+                            .ToList();
+                        var detail = failedChecks.Count > 0
+                            ? string.Join("; ", failedChecks)
+                            : "unknown reason";
+                        throw new InvalidOperationException($"Domain precheck failed. {detail}");
                     }
                 }, cancellationToken);
 
