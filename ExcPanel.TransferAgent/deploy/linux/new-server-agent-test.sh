@@ -5,13 +5,15 @@
 # Ubuntu 24.04 üzerinde sıfırdan agent kurulumunu ve Setup Wizard akışını test eder.
 #
 # Kullanım:
+#   Boş sunucu — tek komut agent kurulumu:
+#     curl -fsSL https://raw.githubusercontent.com/poyraz0/ExcPanelAgentTest/main/ExcPanel.TransferAgent/deploy/linux/bootstrap.sh | sudo bash
+#
+#   Sonrasında (wizard testleri):
 #   1) Bu dosyadaki "YAPILANDIRMA" bölümünü düzenleyin
-#   2) Repo'yu sunucuya kopyalayın veya git clone yapın
-#   3) Adımları sırayla çalıştırın (tüm scripti birden değil, bölüm bölüm önerilir)
+#   2) Adımları sırayla çalıştırın
 #
 #   chmod +x deploy/linux/new-server-agent-test.sh
-#   sudo bash deploy/linux/new-server-agent-test.sh --phase prep
-#   sudo bash deploy/linux/new-server-agent-test.sh --phase install
+#   bash deploy/linux/new-server-agent-test.sh --phase verify
 #   bash deploy/linux/new-server-agent-test.sh --phase verify
 #   bash deploy/linux/new-server-agent-test.sh --phase wizard-plan
 #
@@ -24,7 +26,7 @@ set -euo pipefail
 # YAPILANDIRMA — sunucunuza göre düzenleyin
 # -----------------------------------------------------------------------------
 API_BASE="${API_BASE:-http://localhost:5000}"
-REPO_ROOT="${REPO_ROOT:-/home/agentdev/projects}"          # solution root (ExcPanel.TransferAgent.sln burada)
+REPO_ROOT="${REPO_ROOT:-/opt/excpanel}"                    # bootstrap.sh varsayılanı ile aynı
 STORAGE_ROOT="${STORAGE_ROOT:-/data/excpanel-transfer}"
 DISK_PATH="${DISK_PATH:-/dev/sdb}"                          # formatlanacak boş disk (DİKKAT)
 HOSTNAME_FQDN="${HOSTNAME_FQDN:-transfer01.dogrumail-demo.com}"
@@ -489,8 +491,8 @@ Adımlar:
   all-safe       verify + plan + services + samba-acl + export + import
 
 Örnek yeni sunucu akışı:
-  sudo REPO_ROOT=/opt/excpanel bash $0 --phase prep
-  sudo REPO_ROOT=/opt/excpanel bash $0 --phase install
+  curl -fsSL https://raw.githubusercontent.com/poyraz0/ExcPanelAgentTest/main/ExcPanel.TransferAgent/deploy/linux/bootstrap.sh | sudo bash
+  bash $0 --phase verify
   bash $0 --phase all-safe
 
 Destructive apply (bilinçli):

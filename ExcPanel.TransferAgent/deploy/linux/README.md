@@ -12,6 +12,31 @@
 
 ## Install
 
+### One command (blank Ubuntu server)
+
+Clones the repo, installs dependencies (.NET 8 SDK), and installs the agent service:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/poyraz0/ExcPanelAgentTest/main/ExcPanel.TransferAgent/deploy/linux/bootstrap.sh | sudo bash
+```
+
+Optional environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REPO_URL` | `https://github.com/poyraz0/ExcPanelAgentTest.git` | Git remote |
+| `REPO_BRANCH` | `main` | Branch to clone |
+| `REPO_ROOT` | `/opt/excpanel` | Clone destination |
+| `SKIP_CLONE` | `0` | Set to `1` if repo already exists at `REPO_ROOT` |
+
+Example with existing clone:
+
+```bash
+sudo REPO_ROOT=/opt/excpanel SKIP_CLONE=1 bash /opt/excpanel/ExcPanel.TransferAgent/deploy/linux/bootstrap.sh
+```
+
+### Manual install (repo already on server)
+
 ```bash
 sudo bash deploy/linux/install.sh
 ```
