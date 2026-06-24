@@ -17,6 +17,7 @@ public class SftpService : ISftpService
     private readonly ISftpAuthorizationService _authorizationService;
     private readonly IStorageMountChecker _mountChecker;
     private readonly IJobDirectoryProvider _jobDirectoryProvider;
+    private readonly ISetupConfigStore _setupConfigStore;
     private readonly ILogger<SftpService> _logger;
 
     public SftpService(
@@ -26,6 +27,7 @@ public class SftpService : ISftpService
         ISftpAuthorizationService authorizationService,
         IStorageMountChecker mountChecker,
         IJobDirectoryProvider jobDirectoryProvider,
+        ISetupConfigStore setupConfigStore,
         ILogger<SftpService> logger)
     {
         _options = options.Value;
@@ -34,6 +36,7 @@ public class SftpService : ISftpService
         _authorizationService = authorizationService;
         _mountChecker = mountChecker;
         _jobDirectoryProvider = jobDirectoryProvider;
+        _setupConfigStore = setupConfigStore;
         _logger = logger;
     }
 
@@ -539,10 +542,49 @@ public class SftpService : ISftpService
         SshdDropInPath = _options.SftpSshdDropInPath
     };
 
-    private string ResolveHost() =>
-        string.IsNullOrWhiteSpace(_options.PublicHostName)
+    private string ResolveHost()
+    {
+        var setupHost = TryReadSetupUncHost();
+        if (!string.IsNullOrWhiteSpace(setupHost))
+        {
+            return setupHost;
+        }
+
+        var fqdn = TryReadFqdn();
+        if (!string.IsNullOrWhiteSpace(fqdn))
+        {
+            return fqdn;
+        }
+
+        return string.IsNullOrWhiteSpace(_options.PublicHostName)
             ? Environment.MachineName
             : _options.PublicHostName.Trim();
+    }
+
+    private string? TryReadSetupUncHost()
+    {
+        try
+        {
+            var config = _setupConfigStore.GetAsync().GetAwaiter().GetResult();
+            return string.IsNullOrWhiteSpace(config.Samba?.UncHost) ? null : config.Samba.UncHost.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryReadFqdn()
+    {
+        try
+        {
+            return System.Net.Dns.GetHostEntry(Environment.MachineName).HostName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private SftpUserInfoResponse MapUserInfo(SftpUserRecord record) => new()
     {

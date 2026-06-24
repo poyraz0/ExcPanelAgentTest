@@ -123,14 +123,14 @@ public class LinuxSambaProviderTests
         return new LinuxSambaProvider(
             sambaOptions,
             agentOptions,
-            new SambaPathService(sambaOptions, agentOptions),
+            new SambaPathService(sambaOptions, agentOptions, new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore()),
             new SambaProbeService(runner, privilegedCommandExecutor ?? CreateJoinedDomainExecutor(), sambaOptions),
             new FakeStorageMountChecker { IsMounted = true },
             new LinuxJobDirectoryProvider(
                 agentOptions,
                 sambaOptions,
                 new FakeStorageMountChecker { IsMounted = true },
-                new SambaPathService(sambaOptions, agentOptions),
+                new SambaPathService(sambaOptions, agentOptions, new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore()),
                 new FakeExchangeAclService(),
                 NullLogger<LinuxJobDirectoryProvider>.Instance),
             new FakePrivilegedHelperClient(),

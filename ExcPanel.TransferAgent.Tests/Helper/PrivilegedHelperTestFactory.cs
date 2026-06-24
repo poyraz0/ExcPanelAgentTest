@@ -19,6 +19,7 @@ internal static class PrivilegedHelperTestFactory
         var testDomainJoinHandler = new TestDomainJoinHandler(runner);
         var domainJoinHandler = new DomainJoinHandler(runner);
         var applyExchangeAclHandler = new ApplyExchangeAclHandler(runner);
-        return new PrivilegedHelperHost(storageHandler, sftpInitializeHandler, sftpUserHandler, sambaConfigureHandler, testDomainJoinHandler, domainJoinHandler, applyExchangeAclHandler, () => isRoot);
+        var storageRemountHandler = new StorageRemountHandler(runner);
+        return new PrivilegedHelperHost(storageHandler, sftpInitializeHandler, sftpUserHandler, sambaConfigureHandler, testDomainJoinHandler, domainJoinHandler, applyExchangeAclHandler, storageRemountHandler, () => isRoot);
     }
 }

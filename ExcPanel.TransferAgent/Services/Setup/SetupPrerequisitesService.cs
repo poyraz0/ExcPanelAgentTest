@@ -4,6 +4,7 @@ using ExcPanel.TransferAgent.Models.Setup;
 using ExcPanel.TransferAgent.Options;
 using ExcPanel.TransferAgent.Services.Samba;
 using ExcPanel.TransferAgent.Services.Sftp;
+using ExcPanel.TransferAgent.Services.Storage;
 using Microsoft.Extensions.Options;
 
 namespace ExcPanel.TransferAgent.Services.Setup;
@@ -20,7 +21,9 @@ public class SetupPrerequisitesService : ISetupPrerequisitesService
         "smbclient",
         "acl",
         "openssh-server",
-        "realmd"
+        "realmd",
+        "libnss-winbind",
+        "libpam-winbind"
     ];
 
     private readonly IPlatformInfoService _platformInfoService;
@@ -30,6 +33,7 @@ public class SetupPrerequisitesService : ISetupPrerequisitesService
     private readonly SambaOptions _sambaOptions;
     private readonly SambaProbeService _sambaProbeService;
     private readonly IStorageMountChecker _mountChecker;
+    private readonly IStorageMountRecoveryService _mountRecovery;
     private readonly IStorageService _storageService;
     private readonly ISambaProvider _sambaProvider;
     private readonly ISftpStateStore _sftpStateStore;
@@ -43,6 +47,7 @@ public class SetupPrerequisitesService : ISetupPrerequisitesService
         IOptions<SambaOptions> sambaOptions,
         SambaProbeService sambaProbeService,
         IStorageMountChecker mountChecker,
+        IStorageMountRecoveryService mountRecovery,
         IStorageService storageService,
         ISambaProvider sambaProvider,
         ISftpStateStore sftpStateStore,
@@ -55,6 +60,7 @@ public class SetupPrerequisitesService : ISetupPrerequisitesService
         _sambaOptions = sambaOptions.Value;
         _sambaProbeService = sambaProbeService;
         _mountChecker = mountChecker;
+        _mountRecovery = mountRecovery;
         _storageService = storageService;
         _sambaProvider = sambaProvider;
         _sftpStateStore = sftpStateStore;
@@ -147,6 +153,12 @@ public class SetupPrerequisitesService : ISetupPrerequisitesService
 
         var storageRoot = _agentOptions.StorageRootPath;
         var storageExists = Directory.Exists(storageRoot);
+        if (storageExists)
+        {
+            await _mountRecovery.EnsureMountedAsync(storageRoot, cancellationToken);
+        }
+
+        var storageMounted = storageExists && await _mountChecker.IsMountedAsync(storageRoot, cancellationToken);
         checks.Add(new SetupPrerequisiteItem
         {
             Name = "storage-root-exists",
@@ -157,7 +169,6 @@ public class SetupPrerequisitesService : ISetupPrerequisitesService
             Remediation = storageExists ? null : "Configure storage or create the storage root path."
         });
 
-        var storageMounted = storageExists && await _mountChecker.IsMountedAsync(storageRoot, cancellationToken);
         checks.Add(new SetupPrerequisiteItem
         {
             Name = "storage-root-mounted",

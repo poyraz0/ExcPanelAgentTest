@@ -18,6 +18,8 @@ public class SetupOrchestrationService : ISetupOrchestrationService
     private readonly IStorageDiskDiscoveryService _diskDiscoveryService;
     private readonly IStorageConfigureService _storageConfigureService;
     private readonly IStorageMountChecker _mountChecker;
+    private readonly IStorageMountRecoveryService _mountRecovery;
+    private readonly ISetupConfigStore _setupConfigStore;
     private readonly IStorageService _storageService;
     private readonly IDomainService _domainService;
     private readonly ISambaProvider _sambaProvider;
@@ -36,6 +38,8 @@ public class SetupOrchestrationService : ISetupOrchestrationService
         IStorageDiskDiscoveryService diskDiscoveryService,
         IStorageConfigureService storageConfigureService,
         IStorageMountChecker mountChecker,
+        IStorageMountRecoveryService mountRecovery,
+        ISetupConfigStore setupConfigStore,
         IStorageService storageService,
         IDomainService domainService,
         ISambaProvider sambaProvider,
@@ -53,6 +57,8 @@ public class SetupOrchestrationService : ISetupOrchestrationService
         _diskDiscoveryService = diskDiscoveryService;
         _storageConfigureService = storageConfigureService;
         _mountChecker = mountChecker;
+        _mountRecovery = mountRecovery;
+        _setupConfigStore = setupConfigStore;
         _storageService = storageService;
         _domainService = domainService;
         _sambaProvider = sambaProvider;
@@ -88,7 +94,7 @@ public class SetupOrchestrationService : ISetupOrchestrationService
             response.Warnings.Add("One or more prerequisites failed.");
         }
 
-        var storageMounted = await _mountChecker.IsMountedAsync(
+        var storageMounted = await ResolveStorageMountedAsync(
             request.Storage?.MountPath ?? _agentOptions.StorageRootPath,
             cancellationToken);
 
@@ -164,6 +170,8 @@ public class SetupOrchestrationService : ISetupOrchestrationService
         state.LastError = null;
         await _stateStore.SaveAsync(state, cancellationToken);
 
+        await PersistSetupConfigAsync(request, cancellationToken);
+
         var summary = new SetupSummary { StorageRootPath = _agentOptions.StorageRootPath };
         var warnings = new List<string>();
 
@@ -178,12 +186,17 @@ public class SetupOrchestrationService : ISetupOrchestrationService
                 }
             }, cancellationToken);
 
-            var storageMounted = await _mountChecker.IsMountedAsync(
-                request.Storage?.MountPath ?? _agentOptions.StorageRootPath,
-                cancellationToken);
+            var mountPath = request.Storage?.MountPath ?? _agentOptions.StorageRootPath;
+            var storageMounted = await ResolveStorageMountedAsync(mountPath, cancellationToken);
 
             if (request.Storage is not null && !string.IsNullOrWhiteSpace(request.Storage.DiskPath) && !storageMounted)
             {
+                if (await _mountRecovery.IsConfiguredAsync(mountPath, cancellationToken))
+                {
+                    throw new InvalidOperationException(
+                        $"Storage is configured in fstab but could not be remounted at '{mountPath}'. Run: sudo mount {mountPath}");
+                }
+
                 await RunStepAsync(state, SetupStepNames.DiskDiscovery, async () =>
                 {
                     var disks = await _diskDiscoveryService.DiscoverDisksAsync(cancellationToken);
@@ -496,6 +509,42 @@ public class SetupOrchestrationService : ISetupOrchestrationService
         response.Warnings = warnings;
         response.Errors = errors;
         return response;
+    }
+
+    private async Task<bool> ResolveStorageMountedAsync(string mountPath, CancellationToken cancellationToken)
+    {
+        if (await _mountChecker.IsMountedAsync(mountPath, cancellationToken))
+        {
+            return true;
+        }
+
+        return await _mountRecovery.EnsureMountedAsync(mountPath, cancellationToken);
+    }
+
+    private async Task PersistSetupConfigAsync(SetupPlanRequest request, CancellationToken cancellationToken)
+    {
+        var document = await _setupConfigStore.GetAsync(cancellationToken);
+        if (request.Storage is not null)
+        {
+            document.Storage = request.Storage;
+        }
+
+        if (request.Domain is not null)
+        {
+            document.Domain = request.Domain;
+        }
+
+        if (request.Samba is not null)
+        {
+            document.Samba = request.Samba;
+        }
+
+        if (request.Sftp is not null)
+        {
+            document.Sftp = request.Sftp;
+        }
+
+        await _setupConfigStore.SaveAsync(document, cancellationToken);
     }
 
     private static void AddPlanStep(

@@ -139,5 +139,6 @@ public class SambaPathServiceTests
             Microsoft.Extensions.Options.Options.Create(new TransferAgentOptions
             {
                 StorageRootPath = "/data/excpanel-transfer"
-            }));
+            }),
+            new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore());
 }

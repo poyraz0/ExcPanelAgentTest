@@ -1,3 +1,4 @@
+using ExcPanel.TransferAgent.Contracts;
 using ExcPanel.TransferAgent.Contracts.Validation;
 using ExcPanel.TransferAgent.Models;
 using ExcPanel.TransferAgent.Options;
@@ -9,18 +10,28 @@ public class SambaPathService
 {
     private readonly SambaOptions _sambaOptions;
     private readonly TransferAgentOptions _agentOptions;
+    private readonly ISetupConfigStore _setupConfigStore;
 
-    public SambaPathService(IOptions<SambaOptions> sambaOptions, IOptions<TransferAgentOptions> agentOptions)
+    public SambaPathService(
+        IOptions<SambaOptions> sambaOptions,
+        IOptions<TransferAgentOptions> agentOptions,
+        ISetupConfigStore setupConfigStore)
     {
         _sambaOptions = sambaOptions.Value;
         _agentOptions = agentOptions.Value;
+        _setupConfigStore = setupConfigStore;
     }
 
     public string ResolveServerName()
     {
         var fqdn = TryReadFqdn();
+        var configuredHost = TryReadSetupUncHost();
+        var preferredName = !string.IsNullOrWhiteSpace(configuredHost)
+            ? configuredHost
+            : _sambaOptions.ServerName;
+
         return SambaValidationHelpers.NormalizeServerName(
-            _sambaOptions.ServerName,
+            preferredName,
             Environment.MachineName,
             fqdn);
     }
@@ -89,6 +100,19 @@ public class SambaPathService
         }
 
         return errors;
+    }
+
+    private string? TryReadSetupUncHost()
+    {
+        try
+        {
+            var config = _setupConfigStore.GetAsync().GetAwaiter().GetResult();
+            return string.IsNullOrWhiteSpace(config.Samba?.UncHost) ? null : config.Samba.UncHost.Trim();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string? TryReadFqdn()

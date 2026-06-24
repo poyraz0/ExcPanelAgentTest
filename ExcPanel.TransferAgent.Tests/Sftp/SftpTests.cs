@@ -791,9 +791,11 @@ public class SftpServiceTests
                 new FakeStorageMountChecker(),
                 new SambaPathService(
                     Microsoft.Extensions.Options.Options.Create(new SambaOptions { Enabled = false, StorageRoot = environment.ContentRootPath }),
-                    options),
+                    options,
+                    new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore()),
                 new FakeExchangeAclService(),
                 NullLogger<LinuxJobDirectoryProvider>.Instance),
+            new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore(),
             NullLogger<SftpService>.Instance);
     }
 }

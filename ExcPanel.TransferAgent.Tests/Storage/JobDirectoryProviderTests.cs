@@ -277,7 +277,8 @@ public class JobDirectoryProviderTests : IDisposable
                 Microsoft.Extensions.Options.Options.Create(new TransferAgentOptions
                 {
                     StorageRootPath = storageRoot
-                })),
+                }),
+                new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore()),
             exchangeAclService,
             NullLogger<LinuxJobDirectoryProvider>.Instance);
 }

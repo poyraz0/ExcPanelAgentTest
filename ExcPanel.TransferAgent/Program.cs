@@ -100,6 +100,7 @@ builder.Services.AddSingleton<IPrivilegedHelperClient, LinuxPrivilegedHelperClie
 builder.Services.AddSingleton<IPrivilegedCommandExecutor, LinuxPrivilegedCommandExecutor>();
 builder.Services.AddSingleton<IStorageConfigureService, StorageConfigureService>();
 builder.Services.AddSingleton<IStorageMountChecker, LinuxStorageMountChecker>();
+builder.Services.AddSingleton<IStorageMountRecoveryService, StorageMountRecoveryService>();
 builder.Services.AddSingleton<IJobDirectoryProvider, LinuxJobDirectoryProvider>();
 builder.Services.AddSingleton<ISftpAuthorizationService, DefaultSftpAuthorizationService>();
 builder.Services.AddSingleton<ISftpStateStore, JsonSftpStateStore>();

@@ -3,6 +3,7 @@ namespace ExcPanel.TransferAgent.Contracts;
 public static class PrivilegedHelperActions
 {
     public const string StorageConfigure = "storage.configure";
+    public const string StorageRemount = "storage.remount";
 
     public const string SftpInitialize = "sftp.initialize";
     public const string SftpStatus = "sftp.status";

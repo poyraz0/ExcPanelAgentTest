@@ -21,6 +21,7 @@ public class PrivilegedHelperHost
     private readonly TestDomainJoinHandler _testDomainJoinHandler;
     private readonly DomainJoinHandler _domainJoinHandler;
     private readonly ApplyExchangeAclHandler _applyExchangeAclHandler;
+    private readonly StorageRemountHandler _storageRemountHandler;
     private readonly Func<bool> _isRootCheck;
 
     public PrivilegedHelperHost(
@@ -31,6 +32,7 @@ public class PrivilegedHelperHost
         TestDomainJoinHandler testDomainJoinHandler,
         DomainJoinHandler domainJoinHandler,
         ApplyExchangeAclHandler applyExchangeAclHandler,
+        StorageRemountHandler storageRemountHandler,
         Func<bool>? isRootCheck = null)
     {
         _storageConfigureHandler = storageConfigureHandler;
@@ -40,6 +42,7 @@ public class PrivilegedHelperHost
         _testDomainJoinHandler = testDomainJoinHandler;
         _domainJoinHandler = domainJoinHandler;
         _applyExchangeAclHandler = applyExchangeAclHandler;
+        _storageRemountHandler = storageRemountHandler;
         _isRootCheck = isRootCheck ?? IsRunningAsRoot;
     }
 
@@ -120,6 +123,10 @@ public class PrivilegedHelperHost
             response = request.Action switch
             {
                 PrivilegedHelperActions.StorageConfigure => await _storageConfigureHandler.HandleAsync(
+                    requestId,
+                    request.Payload,
+                    cancellationToken),
+                PrivilegedHelperActions.StorageRemount => await _storageRemountHandler.HandleAsync(
                     requestId,
                     request.Payload,
                     cancellationToken),
