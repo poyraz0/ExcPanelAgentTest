@@ -1,0 +1,4 @@
+namespace ExcPanel.TransferAgent.Providers.Windows;
+
+// Placeholder for future Windows-specific provider implementations
+// (user management, ACL, SMB share configuration, etc.)

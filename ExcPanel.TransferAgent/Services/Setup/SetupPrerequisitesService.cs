@@ -19,7 +19,8 @@ public class SetupPrerequisitesService : ISetupPrerequisitesService
         "krb5-user",
         "smbclient",
         "acl",
-        "openssh-server"
+        "openssh-server",
+        "realmd"
     ];
 
     private readonly IPlatformInfoService _platformInfoService;

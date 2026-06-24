@@ -137,7 +137,8 @@ public class SetupOrchestrationService : ISetupOrchestrationService
 
         var sftpStatus = await _sftpService.GetStatusAsync(cancellationToken);
         var needsSftp = request.Sftp?.Enabled == true && _setupOptions.RequireSftpForUserDownload &&
-                        sftpStatus.Status == SftpOperationStatus.Success && !sftpStatus.Data!.Initialized;
+                        sftpStatus.Status == SftpOperationStatus.Success &&
+                        sftpStatus.Data is { Initialized: false };
         AddPlanStep(response, SetupStepNames.SftpInitialize, "Initialize SFTP", needsSftp, !needsSftp,
             sftpStatus.Data?.Initialized == true ? "SFTP already initialized." : null);
 

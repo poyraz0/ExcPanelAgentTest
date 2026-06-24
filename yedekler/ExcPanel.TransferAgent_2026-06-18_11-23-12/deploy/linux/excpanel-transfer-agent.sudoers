@@ -1,0 +1,2 @@
+Defaults:excpanel-agent !requiretty
+excpanel-agent ALL=(root) NOPASSWD: /opt/excpanel-transfer-agent/ExcPanel.TransferAgent.PrivilegedHelper

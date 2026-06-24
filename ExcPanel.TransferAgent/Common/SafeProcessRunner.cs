@@ -37,7 +37,23 @@ public class SafeProcessRunner : ISafeProcessRunner
         }
 
         using var process = new Process { StartInfo = startInfo };
-        process.Start();
+
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            _logger.LogWarning(ex, "Failed to start command: {Command}", fileName);
+            return new CommandResult
+            {
+                Command = fileName,
+                Args = string.Join(' ', arguments),
+                TimeoutSeconds = timeoutSeconds,
+                ExitCode = -1,
+                Stderr = ex.Message
+            };
+        }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using ExcPanel.TransferAgent.Common;
 using ExcPanel.TransferAgent.Contracts;
 using ExcPanel.TransferAgent.Endpoints;
+using ExcPanel.TransferAgent.Models;
 using ExcPanel.TransferAgent.Options;
 using ExcPanel.TransferAgent.Providers.Linux;
 using ExcPanel.TransferAgent.Providers.Windows;
@@ -119,6 +120,18 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var feature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+        var message = feature?.Error.Message ?? "An unexpected error occurred.";
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(ApiResponse<ErrorResponse>.Fail(message));
+    });
+});
 
 if (app.Environment.IsDevelopment())
 {

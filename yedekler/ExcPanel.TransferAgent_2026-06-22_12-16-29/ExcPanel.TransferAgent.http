@@ -1,0 +1,6 @@
+@ExcPanel.TransferAgent_HostAddress = http://localhost:5103
+
+GET {{ExcPanel.TransferAgent_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

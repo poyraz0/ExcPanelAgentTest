@@ -1,0 +1,21 @@
+[Unit]
+Description=ExcPanel Transfer Agent
+After=network.target
+
+[Service]
+Type=simple
+User=excpanel-agent
+Group=excpanel-agent
+WorkingDirectory=/opt/excpanel-transfer-agent
+ExecStart=/opt/excpanel-transfer-agent/ExcPanel.TransferAgent
+Restart=on-failure
+RestartSec=5
+# Agent must invoke the privileged helper via sudo; NoNewPrivileges blocks elevation.
+NoNewPrivileges=false
+PrivateTmp=true
+# Helper performs disk, fstab and mount operations outside the install directory.
+ProtectSystem=false
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target

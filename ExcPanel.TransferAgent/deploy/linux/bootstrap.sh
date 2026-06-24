@@ -54,8 +54,23 @@ apt_install() {
 ensure_base_packages() {
   log "Temel paketler kuruluyor..."
   apt_install \
-    curl ca-certificates git \
-    parted util-linux e2fsprogs sudo
+    curl ca-certificates git jq \
+    parted util-linux e2fsprogs sudo acl \
+    samba winbind smbclient openssh-server
+}
+
+ensure_wizard_packages() {
+  log "Setup wizard paketleri kuruluyor..."
+  if [[ -n "${KRB5_REALM:-}" ]]; then
+    echo "krb5-config krb5-config/default_realm string ${KRB5_REALM}" | debconf-set-selections
+  fi
+  apt_install \
+    krb5-user \
+    realmd \
+    adcli \
+    libnss-winbind \
+    libpam-winbind \
+    || log "Bazı wizard paketleri kurulamadı — prerequisites bunu raporlar"
 }
 
 ensure_dotnet_sdk() {
@@ -167,6 +182,7 @@ main() {
   require_root
   require_ubuntu
   ensure_base_packages
+  ensure_wizard_packages
   ensure_dotnet_sdk
   clone_or_update_repo
   run_agent_install
