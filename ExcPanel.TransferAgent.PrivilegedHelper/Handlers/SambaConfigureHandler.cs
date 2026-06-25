@@ -206,6 +206,10 @@ public class SambaConfigureHandler
         var storageRoot = payload.StorageRoot.Trim();
         var validUsers = SambaValidationHelpers.FormatSambaValidUsers(payload.RequiredAdGroup);
         var guestOk = payload.AllowGuest ? "yes" : "no";
+        var authDirectives = string.Join(
+            Environment.NewLine,
+            SambaValidationHelpers.BuildShareAuthorizationDirectives()
+                .Select(line => $"    {line}"));
 
         return $"""
 {ShareManagedBlockStart}
@@ -216,9 +220,9 @@ public class SambaConfigureHandler
     read only = no
     create mask = 0660
     directory mask = 0770
-    inherit permissions = yes
     follow symlinks = no
     wide links = no
+{authDirectives}
     valid users = {validUsers}
 {ShareManagedBlockEnd}
 """;

@@ -48,6 +48,14 @@ public class DomainJoinHandler
             return validationError;
         }
 
+        if (!DomainHostNaming.TryBuildFqdn(payload.ComputerName, payload.DnsDomain, out var configuredFqdn, out var fqdnError))
+        {
+            return PrivilegedHelperResponse.Failure(
+                requestId,
+                PrivilegedHelperErrorCodes.InvalidArguments,
+                fqdnError ?? "computerName is invalid.");
+        }
+
         var testJoin = await _commandRunner.RunAsync("net", ["ads", "testjoin"], cancellationToken: cancellationToken);
         if (testJoin.ExitCode == 0)
         {
@@ -57,7 +65,8 @@ public class DomainJoinHandler
                 Joined = true,
                 Skipped = true,
                 JoinedDomain = domain,
-                TestJoinSucceeded = true
+                TestJoinSucceeded = true,
+                ConfiguredFqdn = configuredFqdn
             }, JsonOptions);
 
             return PrivilegedHelperResponse.Ok(
@@ -65,6 +74,12 @@ public class DomainJoinHandler
                 "Server is already joined to the domain.",
                 ["DomainJoinSkipped"],
                 data);
+        }
+
+        var hostnameFailure = await ConfigureHostnameAsync(requestId, payload, configuredFqdn, completedSteps, cancellationToken);
+        if (hostnameFailure is not null)
+        {
+            return hostnameFailure;
         }
 
         var krb5Path = payload.Krb5ConfPath.Trim();
@@ -152,6 +167,9 @@ public class DomainJoinHandler
 
             completedSteps.Add("VerifyRequiredAdGroup");
 
+            var dnsRegistration = await RegisterDnsAsync(cancellationToken);
+            completedSteps.Add("DnsRegister");
+
             var joinedDomain = await ResolveJoinedDomainAsync(cancellationToken);
             var resultData = JsonSerializer.SerializeToElement(new DomainJoinResultData
             {
@@ -161,6 +179,9 @@ public class DomainJoinHandler
                 TestJoinSucceeded = true,
                 DcPingSucceeded = dcPing.ExitCode == 0,
                 RequiredAdGroupResolved = true,
+                ConfiguredFqdn = configuredFqdn,
+                DnsRegistrationAttempted = true,
+                DnsRegistrationSucceeded = dnsRegistration,
                 BackupPaths = new[] { krb5Backup, smbBackup }.Where(p => p is not null).Cast<string>().ToList()
             }, JsonOptions);
 
@@ -189,57 +210,19 @@ public class DomainJoinHandler
         List<string> completedSteps,
         CancellationToken cancellationToken)
     {
-        if (!_commandRunner.ResolvedExecutables.TryGetValue("net", out var netExecutable))
-        {
-            return PrivilegedHelperResponse.Failure(
-                requestId,
-                PrivilegedHelperErrorCodes.CommandFailed,
-                "net executable is not available.",
-                failedStep: "NetAdsJoin",
-                completedSteps: completedSteps);
-        }
-
         var args = new List<string> { "ads", "join", "-U", payload.Username.Trim() };
         if (!string.IsNullOrWhiteSpace(payload.ComputerOu))
         {
             args.Add($"ou={payload.ComputerOu.Trim()}");
         }
 
-        var startInfo = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = netExecutable,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var joinResult = await _commandRunner.RunAsync(
+            "net",
+            args,
+            standardInput: payload.Password,
+            cancellationToken: cancellationToken);
 
-        foreach (var arg in args)
-        {
-            startInfo.ArgumentList.Add(arg);
-        }
-
-        using var process = System.Diagnostics.Process.Start(startInfo);
-        if (process is null)
-        {
-            return PrivilegedHelperResponse.Failure(
-                requestId,
-                PrivilegedHelperErrorCodes.CommandFailed,
-                "Failed to start net ads join.",
-                failedStep: "NetAdsJoin",
-                completedSteps: completedSteps);
-        }
-
-        await process.StandardInput.WriteAsync(payload.Password);
-        await process.StandardInput.FlushAsync();
-        process.StandardInput.Close();
-
-        var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
-
-        if (process.ExitCode != 0)
+        if (joinResult.ExitCode != 0)
         {
             return PrivilegedHelperResponse.Failure(
                 requestId,
@@ -247,8 +230,8 @@ public class DomainJoinHandler
                 "net ads join failed.",
                 failedStep: "NetAdsJoin",
                 completedSteps: completedSteps,
-                exitCode: process.ExitCode,
-                stderr: stderr);
+                exitCode: joinResult.ExitCode,
+                stderr: joinResult.Stderr);
         }
 
         return null;
@@ -295,10 +278,22 @@ public class DomainJoinHandler
             "    idmap config * : backend = tdb",
             "    idmap config * : range = 10000-99999",
             "    winbind use default domain = yes",
+            "    winbind nested groups = yes",
             "    winbind enum users = no",
-            "    winbind enum groups = no",
-            blockEnd
+            "    winbind enum groups = no"
         };
+
+        if (!string.IsNullOrWhiteSpace(payload.ComputerName))
+        {
+            block.Add($"    netbios name = {payload.ComputerName.Trim().ToUpperInvariant()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(payload.DomainControllerIp))
+        {
+            block.Add($"    dns forwarder = {payload.DomainControllerIp.Trim()}");
+        }
+
+        block.Add(blockEnd);
 
         if (globalStart < 0)
         {
@@ -387,7 +382,98 @@ public class DomainJoinHandler
                 "Domain join payload is incomplete.");
         }
 
+        if (!DomainHostNaming.TryValidateComputerName(payload.ComputerName, out var computerNameError))
+        {
+            return PrivilegedHelperResponse.Failure(
+                string.Empty,
+                PrivilegedHelperErrorCodes.InvalidArguments,
+                computerNameError ?? "computerName is invalid.");
+        }
+
+        if (!DomainHostNaming.TryBuildFqdn(payload.ComputerName, payload.DnsDomain, out _, out var fqdnError))
+        {
+            return PrivilegedHelperResponse.Failure(
+                string.Empty,
+                PrivilegedHelperErrorCodes.InvalidArguments,
+                fqdnError ?? "Server FQDN could not be built.");
+        }
+
         return null;
+    }
+
+    private async Task<PrivilegedHelperResponse?> ConfigureHostnameAsync(
+        string requestId,
+        DomainJoinPayload payload,
+        string configuredFqdn,
+        List<string> completedSteps,
+        CancellationToken cancellationToken)
+    {
+        var shortName = payload.ComputerName!.Trim().ToLowerInvariant();
+
+        var hostnameResult = await _commandRunner.RunAsync(
+            "hostnamectl",
+            ["set-hostname", configuredFqdn],
+            cancellationToken: cancellationToken);
+        if (hostnameResult.ExitCode != 0)
+        {
+            return FailureFromCommand(requestId, "SetHostname", hostnameResult, completedSteps);
+        }
+
+        completedSteps.Add("SetHostname");
+
+        try
+        {
+            await UpdateHostsFileAsync(payload.HostsFilePath, configuredFqdn, shortName, cancellationToken);
+        }
+        catch (IOException ex)
+        {
+            return PrivilegedHelperResponse.Failure(
+                requestId,
+                PrivilegedHelperErrorCodes.CommandFailed,
+                "Failed to update /etc/hosts.",
+                failedStep: "UpdateHostsFile",
+                completedSteps: completedSteps,
+                stderr: ex.Message);
+        }
+
+        completedSteps.Add("UpdateHostsFile");
+        return null;
+    }
+
+    private static async Task UpdateHostsFileAsync(
+        string hostsFilePath,
+        string fqdn,
+        string shortName,
+        CancellationToken cancellationToken)
+    {
+        var hostsPath = string.IsNullOrWhiteSpace(hostsFilePath) ? "/etc/hosts" : hostsFilePath.Trim();
+        var content = File.Exists(hostsPath)
+            ? await File.ReadAllTextAsync(hostsPath, cancellationToken)
+            : string.Empty;
+        var lines = content.Replace("\r\n", "\n").Split('\n').ToList();
+        var hostsLine = $"127.0.1.1\t{fqdn} {shortName}";
+        var index = lines.FindIndex(line => line.TrimStart().StartsWith("127.0.1.1", StringComparison.Ordinal));
+
+        if (index >= 0)
+        {
+            lines[index] = hostsLine;
+        }
+        else
+        {
+            lines.Add(hostsLine);
+        }
+
+        await WriteFileAtomicallyAsync(hostsPath, string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine, cancellationToken);
+    }
+
+    private async Task<bool> RegisterDnsAsync(CancellationToken cancellationToken)
+    {
+        var result = await _commandRunner.RunAsync(
+            "net",
+            ["ads", "dns", "register"],
+            cancellationToken: cancellationToken);
+
+        return result.ExitCode == 0;
     }
 
     private static async Task WriteFileAtomicallyAsync(string targetPath, string content, CancellationToken cancellationToken)

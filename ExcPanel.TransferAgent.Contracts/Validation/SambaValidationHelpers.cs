@@ -193,6 +193,30 @@ public static class SambaValidationHelpers
       trimmed = trimmed[1..];
     }
 
-    return $@"+""{trimmed.Replace(@"\", @"\\")}""";
+    var adGroupEntry = $@"+""{trimmed.Replace(@"\", @"\\")}""";
+    var unixGroup = TryGetWinbindUnixGroupName(trimmed);
+    return unixGroup is null
+      ? adGroupEntry
+      : $@"@{unixGroup} {adGroupEntry}";
   }
+
+  public static string? TryGetWinbindUnixGroupName(string domainBackslashGroup)
+  {
+    var parts = domainBackslashGroup.Split('\\', 2);
+    if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[1]))
+    {
+      return null;
+    }
+
+    return parts[1].Trim().ToLowerInvariant();
+  }
+
+  public static IReadOnlyList<string> BuildShareAuthorizationDirectives() =>
+  [
+    "inherit permissions = yes",
+    "acl allow execute always = yes",
+    "map acl inherit = yes",
+    "store dos attributes = yes",
+    "vfs objects = acl_xattr"
+  ];
 }

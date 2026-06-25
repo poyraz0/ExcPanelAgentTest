@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using ExcPanel.TransferAgent.Contracts;
+using ExcPanel.TransferAgent.Contracts.Validation;
 using ExcPanel.TransferAgent.Models.Domain;
 using ExcPanel.TransferAgent.Options;
 using ExcPanel.TransferAgent.Services.Samba;
@@ -103,6 +104,24 @@ public class DomainService : IDomainService
             Passed = !string.IsNullOrWhiteSpace(request.DomainController),
             Message = string.IsNullOrWhiteSpace(request.DomainController) ? "domainController is required." : null
         });
+
+        checks.Add(new DomainPrecheckItem
+        {
+            Name = "computer-name",
+            Passed = DomainHostNaming.TryValidateComputerName(request.ComputerName, out var computerNameError),
+            Message = computerNameError,
+            Remediation = computerNameError is null ? null : "Provide a valid computerName (max 15 characters) in setup domain configuration."
+        });
+
+        if (DomainHostNaming.TryBuildFqdn(request.ComputerName, request.DnsDomain, out var configuredFqdn, out _))
+        {
+            checks.Add(new DomainPrecheckItem
+            {
+                Name = "server-fqdn",
+                Passed = true,
+                Message = $"Server will join as '{configuredFqdn}'."
+            });
+        }
 
         var dnsResolved = await ResolveHostAsync(request.DomainController, cancellationToken);
         checks.Add(new DomainPrecheckItem

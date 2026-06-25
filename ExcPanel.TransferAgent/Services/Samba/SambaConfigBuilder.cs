@@ -14,6 +14,10 @@ public static class SambaConfigBuilder
         var storageRoot = options.StorageRoot.Trim();
         var validUsers = SambaValidationHelpers.FormatSambaValidUsers(options.RequiredAdGroup);
         var guestOk = options.AllowGuest ? "yes" : "no";
+        var authDirectives = string.Join(
+            Environment.NewLine,
+            SambaValidationHelpers.BuildShareAuthorizationDirectives()
+                .Select(line => $"    {line}"));
 
         return $"""
 {ShareManagedBlockStart}
@@ -24,9 +28,9 @@ public static class SambaConfigBuilder
     read only = no
     create mask = 0660
     directory mask = 0770
-    inherit permissions = yes
     follow symlinks = no
     wide links = no
+{authDirectives}
     valid users = {validUsers}
 {ShareManagedBlockEnd}
 """;

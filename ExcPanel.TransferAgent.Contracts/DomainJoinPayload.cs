@@ -14,4 +14,5 @@ public class DomainJoinPayload
     public string RequiredAdGroup { get; set; } = string.Empty;
     public string Krb5ConfPath { get; set; } = "/etc/krb5.conf";
     public string MainConfigPath { get; set; } = "/etc/samba/smb.conf";
+    public string HostsFilePath { get; set; } = "/etc/hosts";
 }

@@ -24,14 +24,30 @@ public class SambaPathService
 
     public string ResolveServerName()
     {
-        var fqdn = TryReadFqdn();
         var configuredHost = TryReadSetupUncHost();
-        var preferredName = !string.IsNullOrWhiteSpace(configuredHost)
-            ? configuredHost
+        if (!string.IsNullOrWhiteSpace(configuredHost))
+        {
+            return SambaValidationHelpers.NormalizeServerName(configuredHost, null, null);
+        }
+
+        var fqdn = TryReadFqdn();
+        if (IsFqdn(fqdn))
+        {
+            return SambaValidationHelpers.NormalizeServerName(fqdn, null, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_agentOptions.PublicHostName)
+            && !IsPlaceholderHost(_agentOptions.PublicHostName))
+        {
+            return SambaValidationHelpers.NormalizeServerName(_agentOptions.PublicHostName, null, null);
+        }
+
+        var fallbackServerName = string.IsNullOrWhiteSpace(_sambaOptions.ServerName)
+            ? null
             : _sambaOptions.ServerName;
 
         return SambaValidationHelpers.NormalizeServerName(
-            preferredName,
+            fallbackServerName,
             Environment.MachineName,
             fqdn);
     }
@@ -126,4 +142,10 @@ public class SambaPathService
             return null;
         }
     }
+
+    private static bool IsFqdn(string? host) =>
+        !string.IsNullOrWhiteSpace(host) && host.Contains('.', StringComparison.Ordinal);
+
+    private static bool IsPlaceholderHost(string host) =>
+        string.Equals(host.Trim(), "transfer-agent.local", StringComparison.OrdinalIgnoreCase);
 }

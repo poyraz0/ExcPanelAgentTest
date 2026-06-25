@@ -8,5 +8,8 @@ public class DomainJoinResultData
     public bool TestJoinSucceeded { get; set; }
     public bool DcPingSucceeded { get; set; }
     public bool RequiredAdGroupResolved { get; set; }
+    public string? ConfiguredFqdn { get; set; }
+    public bool DnsRegistrationAttempted { get; set; }
+    public bool DnsRegistrationSucceeded { get; set; }
     public List<string> BackupPaths { get; set; } = [];
 }

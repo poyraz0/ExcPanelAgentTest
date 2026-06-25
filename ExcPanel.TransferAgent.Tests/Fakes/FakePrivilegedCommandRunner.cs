@@ -37,6 +37,7 @@ public sealed class FakePrivilegedCommandRunner : IPrivilegedCommandRunner
             ["wbinfo"] = "/usr/bin/wbinfo",
             ["realm"] = "/usr/bin/realm",
             ["net"] = "/usr/bin/net",
+            ["hostnamectl"] = "/usr/bin/hostnamectl",
             ["dpkg-query"] = "/usr/bin/dpkg-query"
         };
     }

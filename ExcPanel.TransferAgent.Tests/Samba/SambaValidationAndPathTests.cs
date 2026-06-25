@@ -1,5 +1,6 @@
 using ExcPanel.TransferAgent.Contracts.Validation;
 using ExcPanel.TransferAgent.Models;
+using ExcPanel.TransferAgent.Models.Setup;
 using ExcPanel.TransferAgent.Options;
 using ExcPanel.TransferAgent.Services.Samba;
 
@@ -49,7 +50,18 @@ public class SambaValidationTests
     public void FormatSambaValidUsers_EscapesDomainGroup()
     {
         var value = SambaValidationHelpers.FormatSambaValidUsers(@"DOGRU\Exchange Trusted Subsystem");
-        Assert.Equal(@"+""DOGRU\\Exchange Trusted Subsystem""", value);
+        Assert.Equal(
+            @"@exchange trusted subsystem +""DOGRU\\Exchange Trusted Subsystem""",
+            value);
+    }
+
+    [Fact]
+    public void FormatSambaValidUsers_IncludesWinbindUnixGroupAndAdGroup()
+    {
+        var value = SambaValidationHelpers.FormatSambaValidUsers(@"DOGRUMAIL-DEMO\Exchange Trusted Subsystem");
+        Assert.Equal(
+            @"@exchange trusted subsystem +""DOGRUMAIL-DEMO\\Exchange Trusted Subsystem""",
+            value);
     }
 }
 
@@ -71,7 +83,7 @@ public class SambaConfigBuilderTests
 
         Assert.Equal(first, second);
         Assert.Contains("guest ok = no", first);
-        Assert.Contains(@"valid users = +""DOGRU\\Exchange Trusted Subsystem""", first);
+        Assert.Contains(@"valid users = @exchange trusted subsystem +""DOGRU\\Exchange Trusted Subsystem""", first);
     }
 
     [Fact]
@@ -126,6 +138,47 @@ public class SambaPathServiceTests
         Assert.Contains(@"\imports\8f3a2b1c-0000-0000-0000-000000000002", unc.UncDirectory);
     }
 
+    [Fact]
+    public void TryBuildUncPath_UsesSetupUncHostOverAppsettingsServerName()
+    {
+        var configStore = new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore
+        {
+            Document = new SetupConfigDocument
+            {
+                Samba = new SetupSambaConfig
+                {
+                    ShareName = "PSTTransfer$",
+                    UncHost = "sftp.dogrumail-demo.com",
+                    RequiredAdGroup = @"DOGRUMAIL-DEMO\Exchange Trusted Subsystem"
+                }
+            }
+        };
+
+        var service = new SambaPathService(
+            Microsoft.Extensions.Options.Options.Create(new SambaOptions
+            {
+                Enabled = true,
+                ShareName = "PSTTransfer$",
+                ServerName = "TRANSFER01",
+                StorageRoot = "/data/excpanel-transfer",
+                RequiredAdGroup = @"DOGRUMAIL-DEMO\Exchange Trusted Subsystem"
+            }),
+            Microsoft.Extensions.Options.Options.Create(new TransferAgentOptions
+            {
+                StorageRootPath = "/data/excpanel-transfer"
+            }),
+            configStore);
+
+        var unc = service.TryBuildUncPath(
+            Guid.Parse("7f3a2b1c-0000-0000-0000-000000000001"),
+            JobDirectoryType.Export,
+            "exports/7f3a2b1c-0000-0000-0000-000000000001",
+            "/data/excpanel-transfer/exports/7f3a2b1c-0000-0000-0000-000000000001");
+
+        Assert.NotNull(unc);
+        Assert.StartsWith(@"\\SFTP.DOGRUMAIL-DEMO.COM\PSTTransfer$\", unc!.UncDirectory, StringComparison.OrdinalIgnoreCase);
+    }
+
   private static SambaPathService CreatePathService() =>
         new(
             Microsoft.Extensions.Options.Options.Create(new SambaOptions
@@ -140,5 +193,11 @@ public class SambaPathServiceTests
             {
                 StorageRootPath = "/data/excpanel-transfer"
             }),
-            new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore());
+            new ExcPanel.TransferAgent.Tests.Fakes.FakeSetupConfigStore
+            {
+                Document = new SetupConfigDocument
+                {
+                    Samba = new SetupSambaConfig { UncHost = "TRANSFER01" }
+                }
+            });
 }

@@ -33,6 +33,7 @@ public class LinuxPrivilegedCommandRunner : IPrivilegedCommandRunner
         "wbinfo",
         "realm",
         "net",
+        "hostnamectl",
         "dpkg-query"
     ];
 
@@ -64,6 +65,7 @@ public class LinuxPrivilegedCommandRunner : IPrivilegedCommandRunner
         ["wbinfo"] = ["/usr/bin/wbinfo", "/sbin/wbinfo"],
         ["realm"] = ["/usr/bin/realm", "/sbin/realm"],
         ["net"] = ["/usr/bin/net", "/sbin/net"],
+        ["hostnamectl"] = ["/usr/bin/hostnamectl", "/bin/hostnamectl"],
         ["dpkg-query"] = ["/usr/bin/dpkg-query", "/bin/dpkg-query"]
     };
 

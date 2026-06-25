@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using ExcPanel.TransferAgent.Contracts;
+using ExcPanel.TransferAgent.Contracts.Validation;
 using ExcPanel.TransferAgent.Models;
 using ExcPanel.TransferAgent.Models.Domain;
 using ExcPanel.TransferAgent.Models.Export;
@@ -542,6 +543,26 @@ public class SetupOrchestrationService : ISetupOrchestrationService
         if (request.Sftp is not null)
         {
             document.Sftp = request.Sftp;
+        }
+
+        document.Samba ??= new SetupSambaConfig();
+        var resolvedUncHost = DomainHostNaming.ResolveUncHost(
+            document.Samba.UncHost,
+            request.Domain?.ComputerName,
+            request.Domain?.DnsDomain);
+        if (!string.IsNullOrWhiteSpace(resolvedUncHost))
+        {
+            document.Samba.UncHost = resolvedUncHost;
+        }
+
+        if (string.IsNullOrWhiteSpace(document.Samba.ShareName))
+        {
+            document.Samba.ShareName = request.Samba?.ShareName ?? _sambaOptions.ShareName;
+        }
+
+        if (string.IsNullOrWhiteSpace(document.Samba.RequiredAdGroup))
+        {
+            document.Samba.RequiredAdGroup = request.Samba?.RequiredAdGroup ?? _sambaOptions.RequiredAdGroup;
         }
 
         await _setupConfigStore.SaveAsync(document, cancellationToken);
