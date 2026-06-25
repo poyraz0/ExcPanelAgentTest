@@ -142,6 +142,14 @@ public class DomainJoinHandler
 
             completedSteps.Add("RestartWinbind");
 
+            var keytabFailure = await CreateServiceKeytabAsync(requestId, completedSteps, cancellationToken);
+            if (keytabFailure is not null)
+            {
+                await RollbackAsync(krb5Path, mainConfigPath, krb5Backup, smbBackup, cancellationToken);
+                completedSteps.Add("RollbackConfiguration");
+                return keytabFailure;
+            }
+
             var verifyJoin = await _commandRunner.RunAsync("net", ["ads", "testjoin"], cancellationToken: cancellationToken);
             if (verifyJoin.ExitCode != 0)
             {
@@ -292,6 +300,9 @@ public class DomainJoinHandler
         {
             block.Add($"    dns forwarder = {payload.DomainControllerIp.Trim()}");
         }
+
+        block.Add("    kerberos method = secrets and keytab");
+        block.Add("    dedicated keytab file = /etc/krb5.keytab");
 
         block.Add(blockEnd);
 
@@ -474,6 +485,25 @@ public class DomainJoinHandler
             cancellationToken: cancellationToken);
 
         return result.ExitCode == 0;
+    }
+
+    private async Task<PrivilegedHelperResponse?> CreateServiceKeytabAsync(
+        string requestId,
+        List<string> completedSteps,
+        CancellationToken cancellationToken)
+    {
+        var result = await _commandRunner.RunAsync(
+            "net",
+            ["ads", "keytab", "create"],
+            cancellationToken: cancellationToken);
+
+        if (result.ExitCode != 0)
+        {
+            return FailureFromCommand(requestId, "CreateServiceKeytab", result, completedSteps);
+        }
+
+        completedSteps.Add("CreateServiceKeytab");
+        return null;
     }
 
     private static async Task WriteFileAtomicallyAsync(string targetPath, string content, CancellationToken cancellationToken)
