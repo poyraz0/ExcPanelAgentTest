@@ -150,6 +150,19 @@ public class DomainJoinHandler
                 return keytabFailure;
             }
 
+            var spnFailure = await RegisterServicePrincipalNamesAsync(
+                requestId,
+                payload,
+                configuredFqdn,
+                completedSteps,
+                cancellationToken);
+            if (spnFailure is not null)
+            {
+                await RollbackAsync(krb5Path, mainConfigPath, krb5Backup, smbBackup, cancellationToken);
+                completedSteps.Add("RollbackConfiguration");
+                return spnFailure;
+            }
+
             var verifyJoin = await _commandRunner.RunAsync("net", ["ads", "testjoin"], cancellationToken: cancellationToken);
             if (verifyJoin.ExitCode != 0)
             {
@@ -287,6 +300,7 @@ public class DomainJoinHandler
             "    idmap config * : range = 10000-99999",
             "    winbind use default domain = yes",
             "    winbind nested groups = yes",
+            "    winbind expand groups = 1",
             "    winbind enum users = no",
             "    winbind enum groups = no"
         };
@@ -303,6 +317,9 @@ public class DomainJoinHandler
 
         block.Add("    kerberos method = secrets and keytab");
         block.Add("    dedicated keytab file = /etc/krb5.keytab");
+        block.Add("    server signing = auto");
+        block.Add("    client signing = auto");
+        block.Add("    log level = 1 auth:2 auth_audit:2");
 
         block.Add(blockEnd);
 
@@ -503,6 +520,52 @@ public class DomainJoinHandler
         }
 
         completedSteps.Add("CreateServiceKeytab");
+        return null;
+    }
+
+    private async Task<PrivilegedHelperResponse?> RegisterServicePrincipalNamesAsync(
+        string requestId,
+        DomainJoinPayload payload,
+        string configuredFqdn,
+        List<string> completedSteps,
+        CancellationToken cancellationToken)
+    {
+        var shortName = payload.ComputerName!.Trim().ToLowerInvariant();
+        var servicePrincipalNames = new[]
+        {
+            $"HOST/{configuredFqdn}",
+            $"HOST/{shortName}",
+            $"HOST/{configuredFqdn.ToUpperInvariant()}",
+            $"HOST/{shortName.ToUpperInvariant()}"
+        };
+
+        foreach (var servicePrincipalName in servicePrincipalNames.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var result = await _commandRunner.RunAsync(
+                "net",
+                ["ads", "setspn", "add", servicePrincipalName],
+                cancellationToken: cancellationToken);
+
+            if (result.ExitCode != 0
+                && !result.Stderr.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                && !result.Stdout.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                return FailureFromCommand(requestId, "RegisterServicePrincipalNames", result, completedSteps);
+            }
+        }
+
+        completedSteps.Add("RegisterServicePrincipalNames");
+
+        var keytabRefresh = await _commandRunner.RunAsync(
+            "net",
+            ["ads", "keytab", "create"],
+            cancellationToken: cancellationToken);
+        if (keytabRefresh.ExitCode != 0)
+        {
+            return FailureFromCommand(requestId, "RefreshServiceKeytab", keytabRefresh, completedSteps);
+        }
+
+        completedSteps.Add("RefreshServiceKeytab");
         return null;
     }
 

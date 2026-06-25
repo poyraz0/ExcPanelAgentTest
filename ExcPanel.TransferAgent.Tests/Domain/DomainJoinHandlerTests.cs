@@ -28,6 +28,11 @@ public class DomainJoinHandlerTests
                 return new CommandExecutionResult { ExitCode = 0 };
             }
 
+            if (args.Count >= 3 && args[0] == "ads" && args[1] == "setspn" && args[2] == "add")
+            {
+                return new CommandExecutionResult { ExitCode = 0 };
+            }
+
             if (args.Count >= 3 && args[0] == "ads" && args[1] == "dns" && args[2] == "register")
             {
                 return new CommandExecutionResult { ExitCode = 0 };
