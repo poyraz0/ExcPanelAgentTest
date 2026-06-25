@@ -12,7 +12,6 @@ public static class SambaConfigBuilder
     {
         var shareName = options.ShareName.Trim();
         var storageRoot = options.StorageRoot.Trim();
-        var validUsers = SambaValidationHelpers.FormatSambaValidUsers(options.RequiredAdGroup);
         var guestOk = options.AllowGuest ? "yes" : "no";
         var authDirectives = string.Join(
             Environment.NewLine,
@@ -31,7 +30,6 @@ public static class SambaConfigBuilder
     follow symlinks = no
     wide links = no
 {authDirectives}
-    valid users = {validUsers}
 {ShareManagedBlockEnd}
 """;
     }

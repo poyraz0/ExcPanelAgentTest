@@ -83,7 +83,8 @@ public class SambaConfigBuilderTests
 
         Assert.Equal(first, second);
         Assert.Contains("guest ok = no", first);
-        Assert.Contains(@"valid users = @exchange trusted subsystem +""DOGRU\\Exchange Trusted Subsystem""", first);
+        Assert.Contains("vfs objects = acl_xattr", first);
+        Assert.DoesNotContain("valid users =", first);
     }
 
     [Fact]

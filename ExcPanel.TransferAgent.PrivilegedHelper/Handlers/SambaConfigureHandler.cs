@@ -204,7 +204,6 @@ public class SambaConfigureHandler
     {
         var shareName = payload.ShareName.Trim();
         var storageRoot = payload.StorageRoot.Trim();
-        var validUsers = SambaValidationHelpers.FormatSambaValidUsers(payload.RequiredAdGroup);
         var guestOk = payload.AllowGuest ? "yes" : "no";
         var authDirectives = string.Join(
             Environment.NewLine,
@@ -223,7 +222,6 @@ public class SambaConfigureHandler
     follow symlinks = no
     wide links = no
 {authDirectives}
-    valid users = {validUsers}
 {ShareManagedBlockEnd}
 """;
     }
@@ -283,7 +281,7 @@ public class SambaConfigureHandler
     {
         var setDefault = await _commandRunner.RunAsync(
             "setfacl",
-            ["-R", "-m", $"g:{requiredAdGroup}:rwx", storageRoot],
+            ExchangeAclHelpers.BuildRecursiveModifyAccessArguments(storageRoot, requiredAdGroup),
             cancellationToken: cancellationToken);
         if (setDefault.ExitCode != 0)
         {
@@ -292,7 +290,7 @@ public class SambaConfigureHandler
 
         var defaultAcl = await _commandRunner.RunAsync(
             "setfacl",
-            ["-R", "-d", "-m", $"g:{requiredAdGroup}:rwx", storageRoot],
+            ExchangeAclHelpers.BuildRecursiveModifyDefaultArguments(storageRoot, requiredAdGroup),
             cancellationToken: cancellationToken);
         if (defaultAcl.ExitCode != 0)
         {

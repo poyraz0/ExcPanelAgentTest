@@ -5,10 +5,14 @@
 # Ubuntu 24.04 üzerinde sıfırdan agent kurulumunu ve Setup Wizard akışını test eder.
 #
 # Kullanım:
-#   Boş sunucu — tek komut agent kurulumu:
+#   Snapshot sonrası tek komut (kurulum + setup + test):
+#     export DOMAIN_JOIN_PASSWORD='...'
+#     curl -fsSL https://raw.githubusercontent.com/poyraz0/ExcPanelAgentTest/main/ExcPanel.TransferAgent/deploy/linux/fresh-server-setup.sh | sudo bash
+#
+#   Sadece agent kurulumu:
 #     curl -fsSL https://raw.githubusercontent.com/poyraz0/ExcPanelAgentTest/main/ExcPanel.TransferAgent/deploy/linux/bootstrap.sh | sudo bash
 #
-#   Sonrasında (wizard testleri):
+#   Kurulum sonrası manuel test fazları:
 #   1) Bu dosyadaki "YAPILANDIRMA" bölümünü düzenleyin
 #   2) Adımları sırayla çalıştırın
 #
@@ -29,7 +33,7 @@ API_BASE="${API_BASE:-http://localhost:5000}"
 REPO_ROOT="${REPO_ROOT:-/opt/excpanel}"                    # bootstrap.sh varsayılanı ile aynı
 STORAGE_ROOT="${STORAGE_ROOT:-/data/excpanel-transfer}"
 DISK_PATH="${DISK_PATH:-/dev/sdb}"                          # formatlanacak boş disk (DİKKAT)
-HOSTNAME_FQDN="${HOSTNAME_FQDN:-transfer01.dogrumail-demo.com}"
+HOSTNAME_FQDN="${HOSTNAME_FQDN:-sftp.dogrumail-demo.com}"
 
 # AD / Domain
 DNS_DOMAIN="${DNS_DOMAIN:-dogrumail-demo.com}"
@@ -37,14 +41,14 @@ REALM="${REALM:-DOGRUMAIL-DEMO.COM}"
 WORKGROUP="${WORKGROUP:-DOGRUMAIL-DEMO}"
 DC_HOST="${DC_HOST:-dc.dogrumail-demo.com}"
 DC_IP="${DC_IP:-10.34.141.2}"
-COMPUTER_NAME="${COMPUTER_NAME:-transfer01}"
+COMPUTER_NAME="${COMPUTER_NAME:-sftp}"
 AD_GROUP='DOGRUMAIL-DEMO\Exchange Trusted Subsystem'
 SHARE_NAME='PSTTransfer$'
 
 # Export test
 TEST_JOB_ID="${TEST_JOB_ID:-$(uuidgen 2>/dev/null || echo '00000000-0000-0000-0000-000000000001')}"
-TEST_MAILBOX="${TEST_MAILBOX:-setup-test@excpanel.local}"
-TEST_DOMAIN="${TEST_DOMAIN:-excpanel.local}"
+TEST_MAILBOX="${TEST_MAILBOX:-ahmet.ertem@ofuzkal.com}"
+TEST_DOMAIN="${TEST_DOMAIN:-ofuzkal.com}"
 
 # Domain join şifresi — komuta yazmayın, ortam değişkeni kullanın:
 #   export DOMAIN_JOIN_PASSWORD='...'
@@ -304,10 +308,10 @@ EOF
 phase_samba_acl_checks() {
   section "FAZ 5 — Samba config & ACL kontrolleri"
 
-  echo "--- testparm: valid users formatı ---"
+  echo "--- testparm: share authorization ---"
   if command -v testparm >/dev/null 2>&1; then
-    sudo testparm -s 2>/dev/null | grep -i 'valid users' || warn "valid users satırı bulunamadı (Samba henüz init edilmemiş olabilir)"
-    echo "Beklenen: valid users = +\"DOGRUMAIL-DEMO\\Exchange Trusted Subsystem\""
+    sudo testparm -s 2>/dev/null | grep -iE 'valid users|vfs objects|guest ok' || true
+    echo "Beklenen: valid users satırı YOK (domain auth + dizin ACL ile korunur), guest ok = no"
     sudo testparm -s 2>/dev/null | grep -F '[PSTTransfer$]' && log "Share section mevcut" || warn "[PSTTransfer$] henüz yok"
   else
     warn "testparm yok"
@@ -352,10 +356,13 @@ EOF
 
     if [[ -d "$JOB_DIR" ]]; then
       echo "--- Job klasörü ACL ---"
-      getfacl "$JOB_DIR" | grep -i 'exchange trusted subsystem' || warn "ACL satırı bulunamadı"
-      echo "Beklenen:"
-      echo "  group:DOGRUMAIL-DEMO\\exchange trusted subsystem:rwx"
-      echo "  default:group:DOGRUMAIL-DEMO\\exchange trusted subsystem:rwx"
+      local acl_lines
+      acl_lines=$(getfacl "$JOB_DIR" | grep -i 'exchange trusted subsystem' || true)
+      echo "$acl_lines"
+      if [[ -z "$acl_lines" ]] || ! echo "$acl_lines" | grep -qi 'default:group'; then
+        fail "Job klasöründe Exchange Trusted Subsystem ACL eksik (access + default:group rwx gerekli)"
+      fi
+      log "Job ACL doğrulandı"
     fi
   fi
 
@@ -437,6 +444,7 @@ EOF
   local result
   result=$(curl_json POST "$API_BASE/api/setup/apply" "$apply_body")
   echo "$result" | pretty
+  assert_success "$result"
 
   unset DOMAIN_JOIN_PASSWORD
 
@@ -444,6 +452,17 @@ EOF
   curl_json GET "$API_BASE/api/setup/status" | pretty
 
   log "Setup apply tamamlandı"
+}
+
+phase_full() {
+  section "TAM AKIŞ — Setup apply + doğrulama"
+
+  [[ "${CONFIRM_APPLY:-}" == "yes" ]] || fail "full fazı için CONFIRM_APPLY=yes gerekli"
+  [[ -n "${DOMAIN_JOIN_PASSWORD:-}" ]] || fail "DOMAIN_JOIN_PASSWORD ortam değişkeni gerekli (interaktif mod yok)"
+
+  phase_wizard_apply
+  phase_all_safe
+  log "Tam akış tamamlandı"
 }
 
 # =============================================================================
@@ -466,7 +485,7 @@ phase_all_safe() {
   [ ] GET /api/domain/status → domainJoined (join sonrası)
   [ ] GET /api/samba/status → shareConfigured: true
   [ ] GET /api/sftp/status → initialized: true
-  [ ] testparm → valid users = +"DOGRUMAIL-DEMO\Exchange Trusted Subsystem"
+  [ ] testparm → valid users satırı yok, guest ok = no, vfs objects = acl_xattr
   [ ] POST /api/export/prepare → exchangeFilePath dolu
   [ ] getfacl job dir → group + default:group Exchange Trusted Subsystem rwx
   [ ] POST /api/import/prepare → readyForImport: false + warning
@@ -489,14 +508,18 @@ Adımlar:
   import         Import placeholder
   wizard-apply   DİKKAT: destructive setup apply
   all-safe       verify + plan + services + samba-acl + export + import
+  full           wizard-apply + all-safe (CONFIRM_APPLY=yes + DOMAIN_JOIN_PASSWORD)
 
-Örnek yeni sunucu akışı:
-  curl -fsSL https://raw.githubusercontent.com/poyraz0/ExcPanelAgentTest/main/ExcPanel.TransferAgent/deploy/linux/bootstrap.sh | sudo bash
-  bash $0 --phase verify
+Örnek snapshot sonrası tek komut:
+  export DOMAIN_JOIN_PASSWORD='...'
+  curl -fsSL https://raw.githubusercontent.com/poyraz0/ExcPanelAgentTest/main/ExcPanel.TransferAgent/deploy/linux/fresh-server-setup.sh | sudo bash
+
+Örnek parçalı akış:
+  curl -fsSL .../bootstrap.sh | sudo bash
   bash $0 --phase all-safe
 
 Destructive apply (bilinçli):
-  CONFIRM_APPLY=yes bash $0 --phase wizard-apply
+  CONFIRM_APPLY=yes DOMAIN_JOIN_PASSWORD='...' bash $0 --phase wizard-apply
 
 Ortam değişkenleri: API_BASE, REPO_ROOT, DISK_PATH, DOMAIN_JOIN_PASSWORD, FORMAT_DISK_CODE
 EOF
@@ -521,6 +544,7 @@ main() {
     import)        phase_import ;;
     wizard-apply)  phase_wizard_apply ;;
     all-safe)      phase_all_safe ;;
+    full)          phase_full ;;
     -h|--help|help|"") usage ;;
     *) fail "Bilinmeyen phase: $phase ( --help ile listeleyin)" ;;
   esac

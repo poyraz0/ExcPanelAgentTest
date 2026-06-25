@@ -83,23 +83,38 @@ public class ApplyExchangeAclHandler
 
         var completedSteps = new List<string>();
         var group = payload.RequiredAdGroup.Trim();
+        var ancestors = EnumerateAncestorDirectories(normalizedJob, normalizedRoot).ToList();
 
-        var setAcl = await _commandRunner.RunAsync(
-            "setfacl",
-            ["-m", $"g:{group}:rwx", normalizedJob],
-            cancellationToken: cancellationToken);
-        if (setAcl.ExitCode != 0)
+        foreach (var ancestor in ancestors)
         {
-            return FailureFromCommand(requestId, "ApplyJobAcl", setAcl, completedSteps);
+            var ancestorResult = await ApplyExchangeDirectoryAclAsync(
+                requestId,
+                ancestor,
+                group,
+                $"ApplyAncestorAcl:{ancestor}",
+                completedSteps,
+                cancellationToken);
+            if (ancestorResult is not null)
+            {
+                return ancestorResult;
+            }
         }
 
-        var setDefaultAcl = await _commandRunner.RunAsync(
-            "setfacl",
-            ["-d", "-m", $"g:{group}:rwx", normalizedJob],
-            cancellationToken: cancellationToken);
-        if (setDefaultAcl.ExitCode != 0)
+        if (ancestors.Count > 0)
         {
-            return FailureFromCommand(requestId, "ApplyDefaultJobAcl", setDefaultAcl, completedSteps);
+            completedSteps.Add("ApplyAncestorAcls");
+        }
+
+        var jobResult = await ApplyExchangeDirectoryAclAsync(
+            requestId,
+            normalizedJob,
+            group,
+            "ApplyJobAcl",
+            completedSteps,
+            cancellationToken);
+        if (jobResult is not null)
+        {
+            return jobResult;
         }
 
         completedSteps.Add("ApplyExchangeAcl");
@@ -117,6 +132,35 @@ public class ApplyExchangeAclHandler
             data);
     }
 
+    private async Task<PrivilegedHelperResponse?> ApplyExchangeDirectoryAclAsync(
+        string requestId,
+        string directoryPath,
+        string group,
+        string failedStepPrefix,
+        List<string> completedSteps,
+        CancellationToken cancellationToken)
+    {
+        var setAcl = await _commandRunner.RunAsync(
+            "setfacl",
+            ExchangeAclHelpers.BuildModifyAccessArguments(directoryPath, group),
+            cancellationToken: cancellationToken);
+        if (setAcl.ExitCode != 0)
+        {
+            return FailureFromCommand(requestId, failedStepPrefix, setAcl, completedSteps);
+        }
+
+        var setDefaultAcl = await _commandRunner.RunAsync(
+            "setfacl",
+            ExchangeAclHelpers.BuildModifyDefaultArguments(directoryPath, group),
+            cancellationToken: cancellationToken);
+        if (setDefaultAcl.ExitCode != 0)
+        {
+            return FailureFromCommand(requestId, $"{failedStepPrefix}:Default", setDefaultAcl, completedSteps);
+        }
+
+        return null;
+    }
+
     private static PrivilegedHelperResponse FailureFromCommand(
         string requestId,
         string failedStep,
@@ -130,4 +174,17 @@ public class ApplyExchangeAclHandler
             completedSteps: completedSteps,
             exitCode: result.ExitCode,
             stderr: result.Stderr);
+
+    private static IEnumerable<string> EnumerateAncestorDirectories(string jobPath, string storageRoot)
+    {
+        var root = storageRoot.TrimEnd(Path.DirectorySeparatorChar);
+        var current = Path.GetDirectoryName(jobPath.TrimEnd(Path.DirectorySeparatorChar));
+        while (!string.IsNullOrEmpty(current) &&
+               current.StartsWith(root, StringComparison.Ordinal) &&
+               !string.Equals(current, root, StringComparison.Ordinal))
+        {
+            yield return current;
+            current = Path.GetDirectoryName(current);
+        }
+    }
 }

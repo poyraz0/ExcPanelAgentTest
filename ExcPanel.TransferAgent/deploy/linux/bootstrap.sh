@@ -167,12 +167,17 @@ ExcPanel Transfer Agent kuruldu.
   Swagger:  $API_BASE/swagger
 
 Sonraki adımlar (Setup Wizard):
+  Snapshot sonrası tek komut (kurulum + setup + test):
+    export DOMAIN_JOIN_PASSWORD='...'
+    curl -fsSL https://raw.githubusercontent.com/poyraz0/ExcPanelAgentTest/main/ExcPanel.TransferAgent/deploy/linux/fresh-server-setup.sh | sudo bash
+
+  Manuel test fazları:
   cd $REPO_ROOT/ExcPanel.TransferAgent
   bash deploy/linux/new-server-agent-test.sh --phase verify
   bash deploy/linux/new-server-agent-test.sh --phase wizard-plan
 
 Tam wizard (disk format + domain join — dikkatli):
-  CONFIRM_APPLY=yes bash deploy/linux/new-server-agent-test.sh --phase wizard-apply
+  CONFIRM_APPLY=yes DOMAIN_JOIN_PASSWORD='...' bash deploy/linux/new-server-agent-test.sh --phase wizard-apply
 ================================================================================
 
 EOF

@@ -123,7 +123,12 @@ public class LinuxJobDirectoryProvider : IJobDirectoryProvider
                 jobId,
                 physicalPath);
 
-            await ApplyExchangeAclIfNeededAsync(physicalPath, jobType, cancellationToken);
+            if (!await ApplyExchangeAclIfNeededAsync(physicalPath, jobType, cancellationToken))
+            {
+                return JobDirectoryOperationResult<JobDirectoryCreateResponse>.Fail(
+                    JobDirectoryOperationStatus.Forbidden,
+                    "Failed to apply Exchange ACL on the job directory.");
+            }
 
             return JobDirectoryOperationResult<JobDirectoryCreateResponse>.Ok(
                 BuildCreateResponse(jobId, jobType, relativePath, physicalPath, created: false));
@@ -143,7 +148,12 @@ public class LinuxJobDirectoryProvider : IJobDirectoryProvider
             };
 
             await WriteMarkerAtomicallyAsync(physicalPath, marker, cancellationToken);
-            await ApplyExchangeAclIfNeededAsync(physicalPath, jobType, cancellationToken);
+            if (!await ApplyExchangeAclIfNeededAsync(physicalPath, jobType, cancellationToken))
+            {
+                return JobDirectoryOperationResult<JobDirectoryCreateResponse>.Fail(
+                    JobDirectoryOperationStatus.Forbidden,
+                    "Failed to apply Exchange ACL on the job directory.");
+            }
 
             _logger.LogInformation(
                 "Created job directory for {JobType} job {JobId} at {PhysicalPath}",
@@ -582,24 +592,24 @@ public class LinuxJobDirectoryProvider : IJobDirectoryProvider
         File.Move(tempPath, markerPath, overwrite: true);
     }
 
-    private async Task ApplyExchangeAclIfNeededAsync(
+    private async Task<bool> ApplyExchangeAclIfNeededAsync(
         string physicalPath,
         JobDirectoryType jobType,
         CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsLinux())
         {
-            return;
+            return true;
         }
 
         if (jobType is not JobDirectoryType.Export and not JobDirectoryType.Import)
         {
-            return;
+            return true;
         }
 
         if (string.IsNullOrWhiteSpace(_sambaOptions.RequiredAdGroup))
         {
-            return;
+            return true;
         }
 
         var aclResult = await _exchangeAclService.ApplyExchangeAclAsync(
@@ -613,7 +623,10 @@ public class LinuxJobDirectoryProvider : IJobDirectoryProvider
                 "Failed to apply Exchange ACL on job directory {PhysicalPath}: {Message}",
                 physicalPath,
                 aclResult.Message);
+            return false;
         }
+
+        return true;
     }
 
     private async Task ApplyDirectoryPermissionsAsync(string directoryPath, CancellationToken cancellationToken)
